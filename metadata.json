@@ -1,0 +1,5 @@
+{
+  "name": "Dragonfire Character Tracker",
+  "description": "A digital companion for tracking characters and level-up stickers in the Dragonfire deck-building game.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,3 @@
+title,requirement,text,type
+RECOVERY,none,"when you defeat a non-token encounter that matches your primary Class Type, heal 1 HP",30 xp
+MONSTER HUNTER,none,"When a Monstrosity encounter is placed facing you, draw one card. That encounter gains +1 Attack Strength until it's defeated.",35 xp
