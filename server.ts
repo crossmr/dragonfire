@@ -13,7 +13,7 @@ async function startServer() {
 
   // API to list character sheets
   app.get("/api/sheets", (req, res) => {
-    const sheetsDir = path.join(process.cwd(), "charactersheets");
+    const sheetsDir = path.join(process.cwd(), "public", "charactersheets");
     if (!fs.existsSync(sheetsDir)) {
       return res.json([]);
     }
@@ -26,7 +26,7 @@ async function startServer() {
   });
 
   // Serve character sheets statically
-  app.use("/charactersheets", express.static(path.join(process.cwd(), "charactersheets")));
+  app.use("/charactersheets", express.static(path.join(process.cwd(), "public", "charactersheets")));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

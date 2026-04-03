@@ -34,10 +34,13 @@ export default function App() {
     const fetchSheets = async () => {
       try {
         const response = await fetch('/api/sheets');
+        if (!response.ok) throw new Error('API failed');
         const data = await response.json();
         setAvailableSheets(data);
       } catch (error) {
-        console.error('Failed to fetch character sheets:', error);
+        console.warn('API failed, using fallback sheets:', error);
+        // Fallback for static hosting (GitHub Pages)
+        setAvailableSheets(['druid_fairy', 'sorcerer_kalashtar']);
       }
     };
     fetchSheets();
@@ -150,7 +153,7 @@ export default function App() {
             exit={{ opacity: 0, y: -20 }}
             className="flex flex-col items-center justify-center min-h-screen p-6"
             style={{ 
-              backgroundImage: "url('/Mainbackground.jpg')", 
+              backgroundImage: "url('Mainbackground.jpg')", 
               backgroundSize: 'contain', 
               backgroundRepeat: 'no-repeat', 
               backgroundPosition: 'center' 
@@ -495,7 +498,7 @@ function CampaignView({ campaign, characterIndex, onCharacterChange, onUpdateCam
           transition={{ type: 'spring', damping: 20, stiffness: 100 }}
           className="relative w-full max-w-6xl aspect-[3/1] bg-slate-800 rounded-lg shadow-2xl overflow-hidden border-4 border-slate-700"
           style={{
-            backgroundImage: `url(/charactersheets/${character.class.toLowerCase()}_${character.race.toLowerCase()}_${isBackSide ? 'b' : 'f'}.jpg)`,
+            backgroundImage: `url(charactersheets/${character.class.toLowerCase()}_${character.race.toLowerCase()}_${isBackSide ? 'b' : 'f'}.jpg)`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
