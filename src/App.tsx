@@ -11,6 +11,20 @@ import { STICKERS, TRACKER_LABELS, CLASSES, RACES } from './constants';
 
 const LOCAL_STORAGE_KEY = 'dragonfire_campaigns';
 
+// Explicit offsets for tracker circles (percentage from left)
+// User can manually adjust these values for each of the 16 slots
+const FRONT_CIRCLE_OFFSETS = [
+  4.1, 10.2, 16.3, 22.4, 28.5, 34.6, 40.7, 46.8,
+  52.9, 59.0, 65.2, 71.3, 77.4, 83.5, 89.6, 95.7
+];
+const FRONT_CIRCLE_TOP = '4%';
+
+const BACK_CIRCLE_OFFSETS = [
+  96.3, 90.0, 83.8, 77.7, 71.6, 65.4, 59.4, 
+  53.1, 46.9, 40.8, 34.7, 28.4, 22.3, 16.3, 10.1, 4.0
+];
+const BACK_CIRCLE_TOP = '3%';
+
 export default function App() {
   const [view, setView] = useState<'menu' | 'new' | 'load' | 'campaign'>('menu');
   const [isPortrait, setIsPortrait] = useState(false);
@@ -39,7 +53,6 @@ export default function App() {
         setAvailableSheets(data);
       } catch (error) {
         console.warn('API failed, using fallback sheets:', error);
-        // Fallback for static hosting (GitHub Pages)
         setAvailableSheets(['druid_fairy', 'sorcerer_kalashtar']);
       }
     };
@@ -229,29 +242,63 @@ function MenuButton({ onClick, label, icon, variant = 'primary' }: { onClick: ()
   );
 }
 
-function NewCampaignForm({ onCancel, onSubmit, availableSheets }: { onCancel: () => void, onSubmit: (name: string, characters: { name: string, class: string, race: string }[]) => void, availableSheets: string[] }) {
+function NewCampaignForm({ onSubmit, onCancel, availableSheets }: { 
+  onSubmit: (name: string, characters: { name: string, class: string, race: string }[]) => void, 
+  onCancel: () => void,
+  availableSheets: string[]
+}) {
   const [name, setName] = useState('');
   
-  // Parse available sheets into unique classes and races
-  const classes = Array.from(new Set(availableSheets.map(s => s.split('_')[0]))).sort();
-  const races = Array.from(new Set(availableSheets.map(s => s.split('_')[1]))).sort();
+  // Parse available sheets into unique combinations
+  const combinations = availableSheets.map(s => {
+    const [cls, race] = s.split('_');
+    return { 
+      class: cls.charAt(0).toUpperCase() + cls.slice(1), 
+      race: race.charAt(0).toUpperCase() + race.slice(1) 
+    };
+  });
+
+  const classes = Array.from(new Set(combinations.map(c => c.class))).sort();
+
+  const getRacesForClass = (className: string) => {
+    if (!className) return [];
+    return combinations
+      .filter(c => c.class === className)
+      .map(c => c.race)
+      .sort();
+  };
 
   const [characters, setCharacters] = useState([{ 
     name: '', 
-    class: classes[0] || CLASSES[0], 
-    race: races[0] || RACES[0] 
+    class: '', 
+    race: '' 
   }]);
 
-  const addCharacterField = () => setCharacters([...characters, { 
-    name: '', 
-    class: classes[0] || CLASSES[0], 
-    race: races[0] || RACES[0] 
-  }]);
+  const addCharacterField = () => {
+    setCharacters([...characters, { 
+      name: '', 
+      class: '', 
+      race: '' 
+    }]);
+  };
+
   const updateCharacter = (index: number, field: 'name' | 'class' | 'race', val: string) => {
     const next = [...characters];
-    next[index] = { ...next[index], [field]: val };
+    if (field === 'class') {
+      next[index] = { 
+        ...next[index], 
+        class: val, 
+        race: '' // Reset race when class changes
+      };
+    } else {
+      next[index] = { ...next[index], [field]: val };
+    }
     setCharacters(next);
   };
+
+  const isFormValid = name.trim() !== '' && 
+    characters.length > 0 && 
+    characters.every(c => c.name.trim() !== '' && c.class !== '' && c.race !== '');
 
   return (
     <motion.div
@@ -280,42 +327,56 @@ function NewCampaignForm({ onCancel, onSubmit, availableSheets }: { onCancel: ()
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-2">Characters</label>
             <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-              {characters.map((char, i) => (
-                <div key={i} className="p-4 bg-slate-950/50 rounded-xl border border-slate-800 space-y-3">
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={char.name}
-                        onChange={(e) => updateCharacter(i, 'name', e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm"
-                        placeholder="Character name..."
-                      />
-                    </div>
-                    <div className="w-1/3">
-                      <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Class</label>
-                      <select
-                        value={char.class}
-                        onChange={(e) => updateCharacter(i, 'class', e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm"
+              {characters.map((char, i) => {
+                const availableRaces = getRacesForClass(char.class);
+                return (
+                  <div key={i} className="p-4 bg-slate-950/50 rounded-xl border border-slate-800 space-y-3 relative group">
+                    {characters.length > 1 && (
+                      <button 
+                        onClick={() => setCharacters(characters.filter((_, idx) => idx !== i))}
+                        className="absolute top-2 right-2 p-1 text-slate-600 hover:text-red-500 transition-colors"
                       >
-                        {classes.length > 0 ? classes.map(c => <option key={c} value={c}>{c}</option>) : CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="w-1/3">
-                      <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Race</label>
-                      <select
-                        value={char.race}
-                        onChange={(e) => updateCharacter(i, 'race', e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm"
-                      >
-                        {races.length > 0 ? races.map(r => <option key={r} value={r}>{r}</option>) : RACES.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Name</label>
+                        <input
+                          type="text"
+                          value={char.name}
+                          onChange={(e) => updateCharacter(i, 'name', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm"
+                          placeholder="Character name..."
+                        />
+                      </div>
+                      <div className="w-1/3">
+                        <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Class</label>
+                        <select
+                          value={char.class}
+                          onChange={(e) => updateCharacter(i, 'class', e.target.value)}
+                          className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm ${!char.class ? 'text-slate-500' : 'text-slate-100'}`}
+                        >
+                          <option value="">Select Class</option>
+                          {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-1/3">
+                        <label className="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Race</label>
+                        <select
+                          disabled={!char.class}
+                          value={char.race}
+                          onChange={(e) => updateCharacter(i, 'race', e.target.value)}
+                          className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all text-sm disabled:opacity-50 ${!char.race ? 'text-slate-500' : 'text-slate-100'}`}
+                        >
+                          <option value="">Select Race</option>
+                          {availableRaces.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button
               onClick={addCharacterField}
@@ -334,8 +395,8 @@ function NewCampaignForm({ onCancel, onSubmit, availableSheets }: { onCancel: ()
             Cancel
           </button>
           <button
-            disabled={!name || characters.every(c => !c.name)}
-            onClick={() => onSubmit(name, characters.filter(c => c.name.trim()))}
+            disabled={!isFormValid}
+            onClick={() => onSubmit(name, characters)}
             className="flex-1 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed font-display text-xl tracking-wide transition-all shadow-lg shadow-red-950/50"
           >
             Start
@@ -450,27 +511,36 @@ function CampaignView({ campaign, characterIndex, onCharacterChange, onUpdateCam
   return (
     <div className="flex flex-col min-h-screen">
       {/* Top Bar */}
-      <div className="bg-black/80 backdrop-blur-xl border-b border-red-900/30 p-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-            title="Save and Return"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h2 className="font-display text-3xl tracking-wide text-orange-500 leading-tight">{campaign.name}</h2>
-            <div className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">Dragonfire Campaign</div>
+      <div className="bg-black/80 backdrop-blur-xl border-b border-red-900/30 p-2 sm:p-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 gap-2 sm:gap-4">
+        <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onBack}
+              className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
+              title="Save and Return"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h2 className="font-display text-xl sm:text-3xl tracking-wide text-orange-500 leading-tight">{campaign.name}</h2>
+              <div className="text-[8px] sm:text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">Dragonfire Campaign</div>
+            </div>
           </div>
+          
+          <button
+            onClick={() => setIsBackSide(!isBackSide)}
+            className="sm:hidden px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900/20 text-red-500 text-[10px] font-black uppercase tracking-widest transition-all border border-red-900/30"
+          >
+            {isBackSide ? 'Front' : 'Back'}
+          </button>
         </div>
 
-        <div className="flex items-center gap-2 bg-black/80 p-1 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-1 sm:gap-2 bg-black/80 p-1 rounded-xl border border-slate-800 overflow-x-auto max-w-full no-scrollbar">
           {campaign.characters.map((char, i) => (
             <button
               key={char.id}
               onClick={() => onCharacterChange(i)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all uppercase tracking-tighter ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-bold transition-all uppercase tracking-tighter whitespace-nowrap ${
                 i === characterIndex 
                   ? 'bg-red-700 text-white shadow-lg shadow-red-950/50' 
                   : 'text-slate-500 hover:text-slate-300 hover:bg-black'
@@ -483,20 +553,20 @@ function CampaignView({ campaign, characterIndex, onCharacterChange, onUpdateCam
 
         <button
           onClick={() => setIsBackSide(!isBackSide)}
-          className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-red-900/20 text-red-500 text-xs font-black uppercase tracking-widest transition-all border border-red-900/30"
+          className="hidden sm:block px-4 py-2 rounded-lg bg-slate-800 hover:bg-red-900/20 text-red-500 text-xs font-black uppercase tracking-widest transition-all border border-red-900/30"
         >
           Flip to {isBackSide ? 'Front' : 'Back'}
         </button>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
+      <div className="flex-1 flex items-center justify-center p-2 sm:p-8 overflow-auto bg-slate-950">
         <motion.div
           key={isBackSide ? 'back' : 'front'}
           initial={{ rotateY: isBackSide ? 90 : -90, opacity: 0 }}
           animate={{ rotateY: 0, opacity: 1 }}
           transition={{ type: 'spring', damping: 20, stiffness: 100 }}
-          className="relative w-full max-w-6xl aspect-[3/1] bg-slate-800 rounded-lg shadow-2xl overflow-hidden border-4 border-slate-700"
+          className="relative w-full max-w-6xl aspect-[3/1] bg-slate-800 rounded-lg shadow-2xl overflow-hidden border-2 sm:border-4 border-slate-700 [container-type:inline-size]"
           style={{
             backgroundImage: `url('${import.meta.env.BASE_URL}charactersheets/${character.class.toLowerCase()}_${character.race.toLowerCase()}_${isBackSide ? 'b' : 'f'}.jpg')`,
             backgroundSize: 'cover',
@@ -511,6 +581,22 @@ function CampaignView({ campaign, characterIndex, onCharacterChange, onUpdateCam
           ) : (
             <BackSide character={character} onUpdate={updateCharacter} />
           )}
+
+          {/* Shared Tracker Circle (Absolute to sheet) */}
+          <div className="absolute inset-0 pointer-events-none z-10">
+            <motion.div
+              layoutId="tracker-circle"
+              className="absolute w-5 h-5 sm:w-10 sm:h-10 rounded-full border-2 sm:border-4 border-emerald-400 bg-emerald-400/20 shadow-[0_0_10px_rgba(52,211,153,0.4)] sm:shadow-[0_0_20px_rgba(52,211,153,0.6)]"
+              style={{ x: "-50%" }}
+              animate={{ 
+                top: isBackSide ? BACK_CIRCLE_TOP : FRONT_CIRCLE_TOP,
+                left: isBackSide 
+                  ? `${BACK_CIRCLE_OFFSETS[character.trackerValue]}%` 
+                  : `${FRONT_CIRCLE_OFFSETS[character.trackerValue]}%`
+              }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            />
+          </div>
         </motion.div>
       </div>
     </div>
@@ -519,34 +605,20 @@ function CampaignView({ campaign, characterIndex, onCharacterChange, onUpdateCam
 
 function FrontSide({ character, onUpdate }: { character: Character, onUpdate: (c: Character) => void }) {
   return (
-    <div className="absolute inset-0 flex flex-col">
-      {/* Tracker Top - Aligned with the 16 boxes */}
-      <div className="flex justify-between h-[18%] px-[2%] pt-[1%]">
+    <div className="absolute inset-0">
+      {/* Tracker Click Areas */}
+      <div className="absolute top-0 left-0 right-0 h-[18%] flex justify-between px-[2%] pt-[1%] z-0">
         {TRACKER_LABELS.map((label, i) => (
           <button
             key={i}
             onClick={() => onUpdate({ ...character, trackerValue: i })}
-            className="relative flex-1 group"
-          >
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              {character.trackerValue === i && (
-                <motion.div
-                  layoutId="tracker-circle"
-                  className="relative w-10 h-10 rounded-full border-4 border-emerald-400 bg-emerald-400/20 shadow-[0_0_20px_rgba(52,211,153,0.6)] -top-[10px]"
-                  style={{ 
-                    marginLeft: `${-16 + (i >= 4 ? (i - 3) * 3.5 : 0)}px`
-                  }}
-                />
-              )}
-            </div>
-            {/* Invisible box for clicking */}
-            <div className="w-full h-full hover:bg-white/5 transition-colors cursor-pointer" />
-          </button>
+            className="flex-1 hover:bg-white/5 transition-colors cursor-pointer"
+          />
         ))}
       </div>
 
       {/* Feature Slots - Aligned with the white boxes */}
-      <div className="flex-1 flex justify-between px-[1%] pb-[2%] mt-[2%]">
+      <div className="absolute top-[18%] left-0 right-0 bottom-0 flex justify-between px-[1%] pb-[2%] mt-[2%]">
         {/* Left Slots (1-3) */}
         <div className="w-[24.5%] flex flex-col justify-between py-[1%]">
           {[1, 2, 3].map(slot => (
@@ -562,47 +634,8 @@ function FrontSide({ character, onUpdate }: { character: Character, onUpdate: (c
           ))}
         </div>
 
-        {/* Center Info - Aligned with the center area */}
-        <div className="flex-1 flex flex-col items-start justify-start pl-[4%] pt-[2%]">
-           {/* Character Name Field */}
-           <div className="flex items-center w-full">
-             <div className="w-[18%] invisible">NAME</div>
-             <input
-               type="text"
-               value={character.name}
-               onChange={(e) => onUpdate({ ...character, name: e.target.value })}
-               className="relative bg-transparent border-none focus:ring-0 text-slate-900 font-display text-2xl tracking-wide uppercase flex-1 p-0 -top-[23px] -left-[45px]"
-               placeholder="NAME"
-             />
-           </div>
-           
-           <div className="flex gap-4 mt-1 w-full">
-             {/* XP Field */}
-             <div className="flex items-center">
-               <div className="w-[20px] invisible">XP</div>
-               <input
-                 type="text"
-                 value={character.xp}
-                 onChange={(e) => onUpdate({ ...character, xp: e.target.value })}
-                 className="relative bg-transparent border-none focus:ring-0 text-black font-bold text-base uppercase tracking-widest w-16 p-0 ml-2 top-[4px]"
-                 style={{ textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff' }}
-                 placeholder="XP"
-               />
-             </div>
-             {/* Level Field */}
-             <div className="flex items-center ml-2">
-               <div className="w-[40px] invisible">LEVEL</div>
-               <input
-                 type="text"
-                 value={character.level}
-                 onChange={(e) => onUpdate({ ...character, level: e.target.value })}
-                 className="relative bg-transparent border-none focus:ring-0 text-black font-bold text-[17px] uppercase tracking-widest w-16 p-0 -left-[35px] top-[4px]"
-                 style={{ textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff' }}
-                 placeholder="LVL"
-               />
-             </div>
-           </div>
-        </div>
+        {/* Center Area (Empty for absolute fields) */}
+        <div className="flex-1" />
 
         {/* Right Slots (4-6) */}
         <div className="w-[24.5%] flex flex-col justify-between py-[1%]">
@@ -619,6 +652,37 @@ function FrontSide({ character, onUpdate }: { character: Character, onUpdate: (c
           ))}
         </div>
       </div>
+
+      {/* Absolute Positioned Fields (Relative to the whole sheet) */}
+      {/* Character Name Field */}
+      <input
+        type="text"
+        value={character.name}
+        onChange={(e) => onUpdate({ ...character, name: e.target.value })}
+        className="absolute bg-transparent border-none focus:ring-0 text-slate-900 font-display text-[2.0cqw] tracking-wide uppercase p-0"
+        style={{ top: '23.5%', left: '33.5%', width: '20%' }}
+        placeholder="NAME"
+      />
+      
+      {/* XP Field */}
+      <input
+        type="text"
+        value={character.xp}
+        onChange={(e) => onUpdate({ ...character, xp: e.target.value })}
+        className="absolute bg-transparent border-none focus:ring-0 text-black font-bold text-[1.5cqw] uppercase tracking-widest p-0"
+        style={{ top: '40.5%', left: '31%', width: '4%', textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff' }}
+        placeholder="XP"
+      />
+
+      {/* Level Field */}
+      <input
+        type="text"
+        value={character.level}
+        onChange={(e) => onUpdate({ ...character, level: e.target.value })}
+        className="absolute bg-transparent border-none focus:ring-0 text-black font-bold text-[1.6cqw] uppercase tracking-widest p-0"
+        style={{ top: '40.5%', left: '39.5%', width: '3%', textShadow: '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff' }}
+        placeholder="LVL"
+      />
     </div>
   );
 }
@@ -650,13 +714,13 @@ const renderDescriptionWithIcons = (text: string) => {
 
 const getSlotOffsets = (slot: number) => {
   switch(slot) {
-    case 1: return "-top-[8px] -left-[12px]";
-    case 2: return "top-[8px] -left-[12px]";
-    case 3: return "top-[22px] -left-[12px]";
-    case 4: return "-top-[8px] left-[5px]";
-    case 5: return "top-[8px] left-[5px]";
-    case 6: return "top-[22px] left-[5px]";
-    default: return "-top-[14px] -left-[30px]";
+    case 1: return "top-[-13%] left-[-3.75%]";
+    case 2: return "top-[10.5%] left-[-3.75%]";
+    case 3: return "top-[33%] left-[-3.75%]";
+    case 4: return "top-[-13%] left-[3%]";
+    case 5: return "top-[10.5%] left-[3%]";
+    case 6: return "top-[33%] left-[3%]";
+    default: return "top-[-3.5%] left-[-2.5%]";
   }
 };
 
@@ -669,7 +733,7 @@ const FeatureSlot: React.FC<FeatureSlotProps> = ({ slot, stickerName, onUpdate }
 
   if (stickerName && sticker) {
     return (
-      <div className="relative h-[28%] w-full flex items-center justify-center group">
+      <div className="relative h-[30%] w-full flex items-center justify-center group">
         <button
           onClick={() => setShowActions(!showActions)}
           className={`relative w-[100%] h-[98%] bg-black rounded-sm border border-slate-800 flex items-center justify-center p-1 shadow-lg hover:border-blue-400 transition-all ${slotOffsets}`}
@@ -677,7 +741,7 @@ const FeatureSlot: React.FC<FeatureSlotProps> = ({ slot, stickerName, onUpdate }
           <div className="w-full h-full bg-[#f0f0f0] rounded-[10%/50%] flex flex-col items-center justify-between py-1 px-1.5 text-slate-900 relative shadow-inner overflow-hidden border border-slate-300">
             {/* Title */}
             <div className="flex flex-col items-center w-full">
-              <div className="font-black text-[9px] leading-none uppercase tracking-tight text-black">
+              <div className="font-black text-[0.75cqw] leading-none uppercase tracking-tight text-black">
                 {sticker.name}
               </div>
               {/* Wavy Line */}
@@ -685,26 +749,26 @@ const FeatureSlot: React.FC<FeatureSlotProps> = ({ slot, stickerName, onUpdate }
                 <path d="M0 2C5 2 5 0 10 0C15 0 15 2 20 2C25 2 25 4 30 4C35 4 35 2 40 2" stroke="black" strokeWidth="1.5" />
               </svg>
               {sticker.lineNumber && (
-                <div className="text-[5px] text-slate-400 font-bold -mt-0.5">{sticker.lineNumber}</div>
+                <div className="text-[0.4cqw] text-slate-400 font-bold -mt-0.5">{sticker.lineNumber}</div>
               )}
             </div>
 
             {/* Requirement */}
             {sticker.requirement && sticker.requirement.toLowerCase() !== 'none' && (
-              <div className="italic text-[6px] leading-none text-slate-600 font-medium -mt-0.5">
+              <div className="italic text-[0.5cqw] leading-none text-slate-600 font-medium -mt-0.5">
                 {renderDescriptionWithIcons(sticker.requirement)}
               </div>
             )}
 
             {/* Description */}
-            <div className="text-[7px] leading-[1.1] text-center font-bold text-slate-800 flex-1 flex items-center justify-center px-0.5">
+            <div className="text-[0.6cqw] leading-[1.1] text-center font-bold text-slate-800 flex-1 flex items-center justify-center px-0.5">
               <span>{renderDescriptionWithIcons(sticker.description)}</span>
             </div>
 
             {/* Feature Type Badge */}
             {sticker.featureType && sticker.featureType.toLowerCase() !== 'none' && (
               <div className="relative mt-0.5">
-                <div className="bg-black text-white text-[6px] px-2.5 py-0.5 font-black uppercase tracking-tighter clip-hexagon">
+                <div className="bg-black text-white text-[0.5cqw] px-2.5 py-0.5 font-black uppercase tracking-tighter clip-hexagon">
                   {renderDescriptionWithIcons(sticker.featureType)}
                 </div>
               </div>
@@ -718,7 +782,7 @@ const FeatureSlot: React.FC<FeatureSlotProps> = ({ slot, stickerName, onUpdate }
               initial={{ opacity: 0, scale: 0.9, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 10 }}
-              className="absolute z-20 top-full mt-1 bg-slate-900 border border-red-900/50 rounded-lg shadow-2xl p-1 flex gap-1 backdrop-blur-xl"
+              className={`absolute z-20 top-full mt-1 bg-slate-900 border border-red-900/50 rounded-lg shadow-2xl p-1 flex gap-1 backdrop-blur-xl ${slot >= 4 ? 'right-0' : 'left-0 ml-[5px]'}`}
             >
               <button
                 onClick={() => {
@@ -792,7 +856,7 @@ function StickerDropdown({ onSelect, onClose, slot }: { onSelect: (name: string)
   const isRight = slot >= 4;
 
   return (
-    <div className={`absolute z-30 ${isBottom ? 'bottom-full mb-6' : 'top-0'} ${isRight ? 'right-0' : 'left-0'} w-48 h-40 bg-slate-950 border border-red-900/50 rounded-sm shadow-2xl flex flex-col overflow-hidden -ml-[32px]`}>
+    <div className={`absolute z-30 ${isBottom ? 'bottom-full mb-6' : 'top-0'} ${isRight ? 'right-0' : 'left-0 ml-[5px]'} w-48 h-40 bg-slate-950 border border-red-900/50 rounded-sm shadow-2xl flex flex-col overflow-hidden`}>
       <div className="p-1 border-b border-red-900/30 flex justify-between items-center bg-red-950/20">
         <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest ml-1">Select Feature</span>
         <button onClick={onClose} className="p-1 hover:bg-red-500/20 rounded text-red-500 transition-colors">
@@ -816,35 +880,24 @@ function StickerDropdown({ onSelect, onClose, slot }: { onSelect: (name: string)
 
 function BackSide({ character, onUpdate }: { character: Character, onUpdate: (c: Character) => void }) {
   return (
-    <div className="absolute inset-0 flex flex-col">
-       {/* Tracker Top (Mirrored on back) */}
-       <div className="flex justify-between h-[18%] px-[2%] pt-[1%]">
+    <div className="absolute inset-0">
+      {/* Tracker Click Areas */}
+      <div className="absolute top-0 left-0 right-0 h-[18%] flex justify-between px-[2%] pt-[1%] z-0">
         {[...TRACKER_LABELS].reverse().map((label, i) => {
           const actualIndex = 15 - i;
           return (
-            <div key={i} className="flex-1 relative">
-              <button
-                onClick={() => onUpdate({ ...character, trackerValue: actualIndex })}
-                className="w-full h-full hover:bg-white/5 transition-colors cursor-pointer"
-              />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                {character.trackerValue === actualIndex && (
-                  <div 
-                    className="relative w-10 h-10 rounded-full border-4 border-emerald-400 bg-emerald-400/20 shadow-[0_0_20px_rgba(52,211,153,0.6)] -top-[9px]"
-                    style={{ 
-                      marginLeft: `${20.75 - (actualIndex >= 4 ? (actualIndex - 3) * 3.5 : 0)}px`
-                    }}
-                  />
-                )}
-              </div>
-            </div>
+            <button
+              key={i}
+              onClick={() => onUpdate({ ...character, trackerValue: actualIndex })}
+              className="flex-1 hover:bg-white/5 transition-colors cursor-pointer"
+            />
           );
         })}
       </div>
 
-      <div className="flex-1 flex px-[1%] pb-[2%] mt-[2%] gap-4">
+      <div className="absolute top-[18%] left-0 right-0 bottom-0 flex px-[1%] pb-[2%] mt-[2%] gap-4">
         {/* Left Magic Items Area */}
-        <div className="w-[24.5%] flex flex-col -ml-[5px]">
+        <div className="w-[24%] flex flex-col -ml-[5px]">
           <div className="h-[32%] flex items-end pb-2" />
           <textarea
             value={character.magicItems}
@@ -859,8 +912,8 @@ function BackSide({ character, onUpdate }: { character: Character, onUpdate: (c:
         <div className="flex-1" />
 
         {/* Right Magic Items Area */}
-        <div className="w-[24.5%] flex flex-col -mr-[5px]">
-          <div className="h-[10%] flex items-end pb-2" />
+        <div className="w-[24%] flex flex-col -mr-[8px]">
+          <div className="h-[0%] flex items-end pb-2" />
           <textarea
             value={character.magicItemsRight}
             onChange={(e) => onUpdate({ ...character, magicItemsRight: e.target.value })}

@@ -25,8 +25,8 @@ async function startServer() {
     res.json(sheets);
   });
 
-  // Serve character sheets statically
-  app.use("/charactersheets", express.static(path.join(process.cwd(), "public", "charactersheets")));
+  // Serve character sheets and other public assets
+  app.use(express.static(path.join(process.cwd(), "public")));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
